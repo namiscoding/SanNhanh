@@ -4,20 +4,19 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Search, Users, UserCheck, UserX, Crown, ChevronLeft, ChevronRight, Filter } from 'lucide-react'; // Thêm Filter icon
+import { Loader2, Search, Users, UserCheck, UserX, Crown, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import api from '@/lib/api';
 
 const AdminUsers = () => {
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState([]); // Khởi tạo là mảng rỗng
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState(''); // Thông báo thành công/thất bại
-  const [error, setError] = useState(''); // Lỗi khi fetch data
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
-  // Filter and Sort States
   const [filters, setFilters] = useState({
     search: '',
     role: '',
-    status: '', // 0: Locked, 1: Active
+    status: '',
     sortBy: 'createdAt',
     sortOrder: 'desc',
   });
@@ -25,7 +24,6 @@ const AdminUsers = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
-  // Options for dropdowns
   const roleOptions = [
     { value: '', label: 'Tất cả vai trò' },
     { value: 'Customer', label: 'Khách hàng' },
@@ -34,8 +32,8 @@ const AdminUsers = () => {
   ];
   const statusOptions = [
     { value: '', label: 'Tất cả trạng thái' },
-    { value: '1', label: 'Hoạt động' }, // '1' là string vì nó từ value của select
-    { value: '0', label: 'Đã khóa' },   // '0' là string
+    { value: '1', label: 'Hoạt động' },
+    { value: '0', label: 'Đã khóa' },
   ];
   const sortByOptions = [
     { value: 'createdAt', label: 'Ngày tạo' },
@@ -45,54 +43,57 @@ const AdminUsers = () => {
     { value: 'accountStatus', label: 'Trạng thái tài khoản' },
   ];
 
-  // Fetch Users (cải tiến với useCallback để dùng trong useEffect)
   const fetchUsers = useCallback(async () => {
     setLoading(true);
-    setError(''); // Clear lỗi trước khi fetch mới
+    setError('');
     try {
       const params = {
         page: currentPage,
         limit: 10,
         ...filters,
       };
-      // Xóa các params rỗng
       Object.keys(params).forEach(key => {
         if (params[key] === '' || params[key] === undefined || params[key] === null) {
           delete params[key];
         }
       });
-      // Chuyển status thành int nếu có giá trị
       if (params.status !== undefined) {
         params.status = parseInt(params.status);
       }
 
       const response = await api.get('/admin/users', { params });
-      setUsers(response.data.users);
-      setTotalPages(response.data.totalPages);
-      setTotalItems(response.data.totalItems);
-      setCurrentPage(response.data.currentPage); // Đảm bảo đồng bộ currentPage
+      setUsers(response.data.users || []); // <<< ĐẢM BẢO LÀ MẢNG RỖNG NẾU response.data.users LÀ UNDEFINED
+      setTotalPages(response.data.totalPages || 1); // Cung cấp giá trị mặc định
+      setTotalItems(response.data.totalItems || 0); // Cung cấp giá trị mặc định
+      setCurrentPage(response.data.currentPage || 1); // Cung cấp giá trị mặc định
+
     } catch (err) {
       console.error('Error fetching users:', err.response?.data?.error || err.message || err);
       setError(err.response?.data?.error || 'Không thể tải danh sách người dùng.');
+      setUsers([]); // <<< QUAN TRỌNG: ĐẢM BẢO 'users' LUÔN LÀ MẢNG TRÊN LỖI
+      setTotalPages(1); // Reset totalPages về 1 trên lỗi
+      setTotalItems(0); // Reset totalItems về 0 trên lỗi
+      setCurrentPage(1); // Reset currentPage về 1 trên lỗi
+
     } finally {
       setLoading(false);
     }
-  }, [currentPage, filters]); // Dependencies for useCallback
+  }, [currentPage, filters]);
 
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]); // Trigger fetch when fetchUsers changes (due to currentPage or filters)
+  }, [fetchUsers]);
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters(prev => ({ ...prev, [name]: value }));
-    setCurrentPage(1); // Reset page when filters change
+    setCurrentPage(1);
   };
 
   const handleSortChange = (e) => {
     const { name, value } = e.target;
     setFilters(prev => ({ ...prev, [name]: value }));
-    setCurrentPage(1); // Reset page when sort changes
+    setCurrentPage(1);
   };
 
   const handlePageChange = (newPage) => {
@@ -107,7 +108,7 @@ const AdminUsers = () => {
         accountStatus: newStatus
       });
       setMessage('Cập nhật trạng thái thành công');
-      fetchUsers(); // Refresh list
+      fetchUsers();
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       console.error('Error updating status:', err);
@@ -122,7 +123,7 @@ const AdminUsers = () => {
         role: newRole
       });
       setMessage(`Nâng cấp vai trò thành ${newRole} thành công`);
-      fetchUsers(); // Refresh list
+      fetchUsers();
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       console.error('Error upgrading role:', err);
@@ -133,14 +134,14 @@ const AdminUsers = () => {
 
   const getRoleBadgeColor = (role) => {
     switch (role) {
-      case 'Admin': return 'destructive'; // Hoặc một màu nổi bật hơn cho Admin
+      case 'Admin': return 'destructive';
       case 'Owner': return 'default';
       case 'Customer': return 'secondary';
       default: return 'outline';
     }
   };
 
-  if (loading && users.length === 0) { // Chỉ hiển thị loading to khi mới tải lần đầu
+  if (loading && users.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-20 w-20 text-blue-600 animate-spin" />
@@ -159,12 +160,12 @@ const AdminUsers = () => {
         </p>
       </div>
 
-      {message && ( // Thông báo thành công/thất bại
+      {message && (
         <Alert className={`mb-6 ${message.includes('thành công') ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
           <AlertDescription className={`${message.includes('thành công') ? 'text-green-800' : 'text-red-800'}`}>{message}</AlertDescription>
         </Alert>
       )}
-      {error && ( // Lỗi khi fetch data
+      {error && (
         <Alert className="mb-6 bg-red-50 border-red-200">
           <AlertDescription className="text-red-800">{error}</AlertDescription>
         </Alert>
@@ -264,7 +265,7 @@ const AdminUsers = () => {
             </div>
 
             {/* Clear Filters Button */}
-            <div className="flex items-end lg:col-span-1"> {/* Canh lề cuối */}
+            <div className="flex items-end lg:col-span-1">
               <Button onClick={() => setFilters({ search: '', role: '', status: '', sortBy: 'createdAt', sortOrder: 'desc' })} variant="outline" className="w-full border-gray-300 text-gray-700 hover:bg-gray-100 hover:text-gray-900">
                 Xóa bộ lọc
               </Button>
@@ -302,8 +303,6 @@ const AdminUsers = () => {
                     <div>
                       <h3 className="font-medium text-gray-900">{user.fullName}</h3>
                       <p className="text-sm text-gray-600">{user.email}</p>
-                      {/* Có thể hiển thị SĐT nếu có trong API */}
-                      {/* {user.phoneNumber && <p className="text-xs text-gray-500">SĐT: {user.phoneNumber}</p>} */}
                       <p className="text-xs text-gray-500">
                         Tạo: {new Date(user.createdAt).toLocaleDateString('vi-VN')}
                       </p>

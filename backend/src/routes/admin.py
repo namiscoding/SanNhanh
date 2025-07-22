@@ -218,5 +218,107 @@ def get_all_court_complexes():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@admin_bp.route('/users', methods=['GET'])
+@jwt_required()
+def get_all_users():
+    """
+    Get all users with pagination, sorting, and filtering for Admin panel.
+    Query Params:
+        page (int): Current page number (default: 1)
+        limit (int): Items per page (default: 10)
+        sortBy (str): Field to sort by (e.g., 'createdAt', 'fullName', 'email', 'role', 'accountStatus')
+        sortOrder (str): 'asc' or 'desc' (default: 'desc')
+        role (str): Filter by user role (e.g., 'Customer', 'Owner', 'Admin')
+        status (int): Filter by account status (0=Locked, 1=Active)
+        search (str): Search by fullName or email
+    """
+    # Kiểm tra quyền admin
+    error = admin_required()
+    if error:
+        return error
+    
+    try:
+        # Lấy query parameters
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 10, type=int)
+        sort_by = request.args.get('sortBy', 'createdAt')
+        sort_order = request.args.get('sortOrder', 'desc')
+        filter_role = request.args.get('role')
+        filter_status = request.args.get('status', type=int) # Filter by 0 or 1
+        search_query = request.args.get('search')
 
+        users_query = User.query # Bắt đầu truy vấn
+
+        # Lọc theo vai trò
+        if filter_role and filter_role in ['Customer', 'Owner', 'Admin']:
+            users_query = users_query.filter(User.role == filter_role)
+
+        # Lọc theo trạng thái tài khoản
+        # is not None để phân biệt giữa không gửi params và gửi status=0
+        if filter_status is not None and filter_status in [0, 1]: 
+            users_query = users_query.filter(User.accountStatus == filter_status)
+
+        # Tìm kiếm theo fullName hoặc email
+        if search_query:
+            search_pattern = f"%{search_query}%"
+            users_query = users_query.filter(
+                db.or_(
+                    User.fullName.ilike(search_pattern),
+                    User.email.ilike(search_pattern)
+                )
+            )
+
+        # Sắp xếp
+        if sort_by:
+            # Ánh xạ tên cột từ frontend sang các thuộc tính model
+            sort_columns = {
+                'createdAt': User.createdAt,
+                'fullName': User.fullName,
+                'email': User.email,
+                'role': User.role,
+                'accountStatus': User.accountStatus,
+            }
+            sort_column = sort_columns.get(sort_by)
+
+            if sort_column is not None: # Đảm bảo cột sắp xếp hợp lệ
+                if sort_order == 'asc':
+                    users_query = users_query.order_by(sort_column.asc())
+                else:
+                    users_query = users_query.order_by(sort_column.desc())
+            else:
+                # Mặc định sắp xếp nếu sortBy không hợp lệ
+                users_query = users_query.order_by(User.createdAt.desc())
+        else:
+            # Mặc định sắp xếp nếu không có sortBy được cung cấp
+            users_query = users_query.order_by(User.createdAt.desc())
+
+        # Thực hiện phân trang
+        paginated_users = users_query.paginate(page=page, per_page=limit, error_out=False)
+        
+        users_data = []
+        for user in paginated_users.items:
+            users_data.append({
+                'id': user.id,
+                'fullName': user.fullName,
+                'email': user.email,
+                'role': user.role,
+                'accountStatus': user.accountStatus,
+                'createdAt': user.createdAt.isoformat() if user.createdAt else None,
+                # Nếu bạn đã thêm phoneNumber vào User model và muốn trả về:
+                # 'phoneNumber': user.phoneNumber if hasattr(user, 'phoneNumber') else None,
+            })
+        
+        return jsonify({
+            'users': users_data,
+            'totalItems': paginated_users.total,
+            'totalPages': paginated_users.pages,
+            'currentPage': paginated_users.page,
+            'perPage': paginated_users.per_page
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback() # Luôn rollback transaction nếu có lỗi
+        import traceback
+        traceback.print_exc() # In traceback đầy đủ ra console của server để debug
+        return jsonify({'error': str(e)}), 500
 

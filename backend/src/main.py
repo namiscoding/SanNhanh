@@ -36,7 +36,8 @@ def create_app():
     # Link the globally defined 'db' and 'migrate' instances to the app
     db.init_app(app)
     migrate.init_app(app, db)
-
+    with app.app_context():
+        db.create_all()
     # Register blueprints (keep these imports here to avoid circular dependencies
     # if any blueprint imports from models that depend on 'db' already initialized)
     from src.routes.auth import auth_bp

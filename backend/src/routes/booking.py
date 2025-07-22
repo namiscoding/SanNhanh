@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, jwt_required
 from src.models.database import db, User, Booking, Court, CourtComplex, HourlyPriceRate
 from src.services.email_service import EmailService
+import src.services.email_service as email_service_module
 import src.services.vietqr_service as vietqr_service_module
 from datetime import datetime, timedelta
 import uuid
@@ -156,7 +157,30 @@ def create_booking():
         
         db.session.add(new_booking)
         db.session.commit()
-        
+         # Lấy thông tin chủ sân để gửi email
+        owner = User.query.get(complex.ownerId)
+        if owner and owner.email: # Đảm bảo chủ sân và email tồn tại
+            try:
+                email_service_module.EmailService.send_new_booking_notification_to_owner(
+                    owner.email,
+                    owner.fullName,
+                    {
+                        'id': new_booking.id,
+                        'courtName': court.name,
+                        'complexName': complex.name,
+                        'customerName': user.fullName, # Tên khách hàng đặt
+                        'customerEmail': user.email, # Email khách hàng đặt
+                        'startTime': new_booking.startTime.isoformat(),
+                        'endTime': new_booking.endTime.isoformat(),
+                        'totalPrice': float(new_booking.totalPrice),
+                        'status': new_booking.status, # Trạng thái Pending
+                    }
+                )
+            except Exception as e:
+                print(f"Failed to send new booking notification email to owner: {e}")
+                import traceback
+                traceback.print_exc()
+        # --- KẾT THÚC ĐOẠN CODE ĐƯỢC THÊM ---
         # Generate VietQR payment info
         payment_info = None
         # Kiểm tra sự tồn tại của các trường trước khi sử dụng
@@ -184,7 +208,7 @@ def create_booking():
         # Send confirmation email
         try:
             from src.services import email_service # Giả định đây là đường dẫn đúng
-            EmailService.send_booking_confirmation(
+            email_service_module.EmailService.send_booking_confirmation(
                 user.email,
                 user.fullName,
                 {

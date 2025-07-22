@@ -1,1 +1,76 @@
-node_modules/\n__pycache__/\n*.pyc\nvenv/\n.env\n*.db
+# ----------------------------------------------------------------------------------------------------
+# Global ignores (áp dụng cho toàn bộ repository)
+# ----------------------------------------------------------------------------------------------------
+
+# Environment variables
+.env
+*.env
+.env.*local # Để ignore .env.development, .env.production, v.v. nếu có
+
+# IDE specific files (VS Code, etc.)
+.vscode/
+.idea/
+
+# Editor temporary files
+*.swp
+*~
+*.bak
+
+# OS generated files
+.DS_Store
+.Trashes
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Deployment files (nếu bạn không muốn commit chúng)
+DEPLOYMENT.md
+docker-compose.yml
+# ----------------------------------------------------------------------------------------------------
+# Frontend (Node/React/Vite) specific ignores
+# ----------------------------------------------------------------------------------------------------
+
+# Node modules
+node_modules/
+
+# Vite cache
+.vite/
+
+# Build output directory (production build)
+frontend/dist/
+# ----------------------------------------------------------------------------------------------------
+# Backend (Python/Flask) specific ignores
+# ----------------------------------------------------------------------------------------------------
+
+# Python virtual environments
+venv/
+.venv/
+.python-version
+ENV/
+
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+
+# Build artifacts (từ setuptools, wheel, v.v.)
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Database files
+backend/court_booking.db   # File SQLite database cục bộ
+
+# Alembic migrations (Chỉ ignore cache, KHÔNG ignore các script .py trong versions/)
+backend/migrations/__pycache__/
+backend/migrations/*.pyc
+
+# Flask instance folder (nơi Flask lưu files config/db riêng cho mỗi instance)
+backend/instance/
+backend/*.db

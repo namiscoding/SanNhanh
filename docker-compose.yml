@@ -1,0 +1,22 @@
+
+services:
+  db:
+    image: mysql:8.0 # Sử dụng image MySQL phiên bản 8.0
+    container_name: court_booking_mysql_db # Tên container để dễ nhận biết
+    environment:
+      MYSQL_ROOT_PASSWORD: nam11082004 # Mật khẩu root của MySQL (chỉ dùng cho dev)
+      MYSQL_DATABASE: court_booking_db     # Tên database sẽ được tạo tự động
+      MYSQL_USER: tnam           # Tên người dùng database
+      MYSQL_PASSWORD: nam11082004    # Mật khẩu người dùng database
+    ports:
+      - "3306:3306" # Mapped port: host_port:container_port. Cho phép truy cập từ localhost:3306
+    volumes:
+      - db_data:/var/lib/mysql # Persistent volume để lưu trữ dữ liệu database
+    healthcheck: # Kiểm tra trạng thái database
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 10s
+      retries: 5
+    restart: always # Tự động khởi động lại nếu container dừng
+
+volumes:
+  db_data: # Định nghĩa named volume

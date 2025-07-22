@@ -1,51 +1,60 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from werkzeug.security import check_password_hash, generate_password_hash
 from src.models.database import db, User
-import bcrypt
-import uuid
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
+import os
 
 auth_bp = Blueprint('auth', __name__)
+
+# Google OAuth configuration
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', 'your-google-client-id')
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
         
-        # Check if user already exists
-        existing_user = User.query.filter_by(email=data['email']).first()
-        if existing_user:
-            return jsonify({'error': 'Email đã được sử dụng'}), 400
+        # Validate required fields
+        required_fields = ['fullName', 'email', 'password']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'error': f'{field} is required'}), 400
         
-        # Hash password
-        password_hash = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        # Check if user already exists
+        if User.query.filter_by(email=data['email']).first():
+            return jsonify({'error': 'Email already registered'}), 400
         
         # Create new user
-        new_user = User(
-            full_name=data['fullName'],
+        user = User(
+            fullName=data['fullName'],
             email=data['email'],
-            password_hash=password_hash,
-            role='Customer'
+            passwordHash=generate_password_hash(data['password']),
+            role='Customer',
+            accountStatus=1
         )
         
-        db.session.add(new_user)
+        db.session.add(user)
         db.session.commit()
         
         # Create access token
-        access_token = create_access_token(identity=new_user.id)
+        access_token = create_access_token(identity=user.id)
         
         return jsonify({
-            'message': 'Đăng ký thành công',
+            'message': 'User registered successfully',
             'access_token': access_token,
             'user': {
-                'id': new_user.id,
-                'fullName': new_user.full_name,
-                'email': new_user.email,
-                'role': new_user.role,
-                'image': new_user.image
+                'id': user.id,
+                'fullName': user.fullName,
+                'email': user.email,
+                'role': user.role,
+                'accountStatus': user.accountStatus
             }
         }), 201
         
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 @auth_bp.route('/login', methods=['POST'])
@@ -53,30 +62,28 @@ def login():
     try:
         data = request.get_json()
         
-        # Find user by email
+        if not data.get('email') or not data.get('password'):
+            return jsonify({'error': 'Email and password are required'}), 400
+        
         user = User.query.filter_by(email=data['email']).first()
-        if not user:
-            return jsonify({'error': 'Email hoặc mật khẩu không đúng'}), 401
         
-        # Check account status
-        if user.account_status == 0:
-            return jsonify({'error': 'Tài khoản đã bị khóa'}), 401
+        if not user or not check_password_hash(user.passwordHash, data['password']):
+            return jsonify({'error': 'Invalid email or password'}), 401
         
-        # Check password
-        if not bcrypt.checkpw(data['password'].encode('utf-8'), user.password_hash.encode('utf-8')):
-            return jsonify({'error': 'Email hoặc mật khẩu không đúng'}), 401
+        if user.accountStatus == 0:
+            return jsonify({'error': 'Account is disabled'}), 403
         
-        # Create access token
         access_token = create_access_token(identity=user.id)
         
         return jsonify({
-            'message': 'Đăng nhập thành công',
+            'message': 'Login successful',
             'access_token': access_token,
             'user': {
                 'id': user.id,
-                'fullName': user.full_name,
+                'fullName': user.fullName,
                 'email': user.email,
                 'role': user.role,
+                'accountStatus': user.accountStatus,
                 'image': user.image
             }
         }), 200
@@ -88,41 +95,87 @@ def login():
 def google_auth():
     try:
         data = request.get_json()
+        token = data.get('token')
         
-        # Check if user already exists
-        user = User.query.filter_by(email=data['email']).first()
+        if not token:
+            return jsonify({'error': 'Google token is required'}), 400
         
-        if user:
-            # Update user info from Google
-            user.full_name = data['name']
-            user.image = data['picture']
-        else:
+        # Verify Google token
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                token, google_requests.Request(), GOOGLE_CLIENT_ID
+            )
+            
+            if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+                raise ValueError('Wrong issuer.')
+                
+        except ValueError as e:
+            return jsonify({'error': 'Invalid Google token'}), 401
+        
+        email = idinfo['email']
+        name = idinfo['name']
+        picture = idinfo.get('picture', '')
+        
+        # Check if user exists
+        user = User.query.filter_by(email=email).first()
+        
+        if not user:
             # Create new user
             user = User(
-                full_name=data['name'],
-                email=data['email'],
-                image=data['picture'],
-                role='Customer'
+                fullName=name,
+                email=email,
+                passwordHash='',  # No password for Google users
+                role='Customer',
+                accountStatus=1,
+                image=picture
             )
             db.session.add(user)
+            db.session.commit()
+        else:
+            # Update user image if changed
+            if user.image != picture:
+                user.image = picture
+                db.session.commit()
         
-        db.session.commit()
+        if user.accountStatus == 0:
+            return jsonify({'error': 'Account is disabled'}), 403
         
-        # Check account status
-        if user.account_status == 0:
-            return jsonify({'error': 'Tài khoản đã bị khóa'}), 401
-        
-        # Create access token
         access_token = create_access_token(identity=user.id)
         
         return jsonify({
-            'message': 'Đăng nhập thành công',
+            'message': 'Google login successful',
             'access_token': access_token,
             'user': {
                 'id': user.id,
-                'fullName': user.full_name,
+                'fullName': user.fullName,
                 'email': user.email,
                 'role': user.role,
+                'accountStatus': user.accountStatus,
+                'image': user.image
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@auth_bp.route('/me', methods=['GET'])
+@jwt_required()
+def get_current_user():
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        return jsonify({
+            'user': {
+                'id': user.id,
+                'fullName': user.fullName,
+                'email': user.email,
+                'role': user.role,
+                'accountStatus': user.accountStatus,
                 'image': user.image
             }
         }), 200
@@ -130,24 +183,20 @@ def google_auth():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@auth_bp.route('/me', methods=['GET'])
+@auth_bp.route('/refresh', methods=['POST'])
 @jwt_required()
-def get_current_user():
+def refresh_token():
     try:
-        current_user_id = get_jwt_identity()
-        user = User.query.get(current_user_id)
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
         
-        if not user:
-            return jsonify({'error': 'Người dùng không tồn tại'}), 404
+        if not user or user.accountStatus == 0:
+            return jsonify({'error': 'Invalid user'}), 401
+        
+        new_token = create_access_token(identity=user_id)
         
         return jsonify({
-            'user': {
-                'id': user.id,
-                'fullName': user.full_name,
-                'email': user.email,
-                'role': user.role,
-                'image': user.image
-            }
+            'access_token': new_token
         }), 200
         
     except Exception as e:

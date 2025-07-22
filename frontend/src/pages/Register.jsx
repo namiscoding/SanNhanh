@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import api from '@/lib/api';
-import { setAuthData } from '@/lib/auth';
+import { storeUser, storeToken } from '@/lib/auth';
 import { User, Mail, Lock, AlertCircle } from 'lucide-react';
 
 const Register = () => {
@@ -53,7 +53,12 @@ const Register = () => {
       });
       
       const { access_token, user } = response.data;
-      setAuthData(access_token, user);
+      storeToken(access_token);
+      storeUser(user);
+      
+      // Dispatch custom event for auth change
+      window.dispatchEvent(new Event('authChange'));
+      
       navigate('/');
     } catch (error) {
       setError(error.response?.data?.error || 'Đã xảy ra lỗi khi đăng ký');

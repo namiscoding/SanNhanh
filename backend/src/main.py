@@ -19,16 +19,8 @@ from src.models.database import db
 # Initialize Migrate globally, but without linking to app/db yet
 migrate = Migrate()
 
-# --- START OF FIX (Moved app = create_app() here) ---
-# Call create_app() immediately to define 'app'
-app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static')) # Temporarily define app here for decorators
-# --- END OF FIX ---
-
-
 def create_app():
-    # We will pass this app instance to init_app, not create a new one here
-    # Use the globally defined 'app' instance
-    global app # Declare 'app' as global so we modify the existing one
+    app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default_secret_key_for_dev')
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'default_jwt_secret_key_for_dev')
@@ -36,7 +28,7 @@ def create_app():
     CORS(app)
     jwt = JWTManager(app)
 
-    database_url = os.getenv('DATABASE_URL', 'sqlite:///default.db')
+    database_url = os.getenv('DATABASE_URL', 'postgresql://sa:nam11082004@localhost:5432/sportsync_db')
     print(f"DEBUG: DATABASE_URL from .env: {database_url}")
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -55,7 +47,7 @@ def create_app():
     from src.routes.review import review_bp
     from src.routes.notification import notification_bp
     from src.routes.public import public_bp
-    
+
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(court_complex_bp, url_prefix='/api/court-complexes')
@@ -65,10 +57,30 @@ def create_app():
     app.register_blueprint(notification_bp, url_prefix='/api/notifications')
     app.register_blueprint(public_bp, url_prefix='/api/public')
 
+    # CÁC DECORATOR @app.route PHẢI ĐƯỢC ĐẶT TRONG HÀM create_app()
+    # HOẶC SAU KHI 'app' ĐƯỢC TRẢ VỀ TỪ create_app() VÀ GÁN VÀO BIẾN 'app' TOÀN CỤC.
+    # Tuy nhiên, vì chúng ta sẽ triển khai frontend riêng, các route này không cần thiết cho Render.
+    # Bạn có thể giữ chúng cho mục đích phát triển cục bộ nếu muốn.
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve(path):
+        static_folder_path = app.static_folder
+        if static_folder_path is None:
+            return "Static folder not configured", 404
+
+        if path != "" and os.path.exists(os.path.join(static_folder_path, path)):
+            return send_from_directory(static_folder_path, path)
+        else:
+            index_path = os.path.join(static_folder_path, 'index.html')
+            if os.path.exists(index_path):
+                return send_from_directory(static_folder_path, 'index.html')
+            else:
+                return "index.html not found", 404
+
     return app
 
 # Call create_app() to initialize the global 'app' instance and setup extensions/blueprints
-app = create_app() # <<< CHUYỂN DÒNG NÀY LÊN TRÊN CAO HƠN
+app = create_app() # Gán instance app được trả về từ create_app() vào biến 'app' toàn cục
 
 # Hàm tạo dữ liệu mặc định
 def create_default_data(_app): # Sử dụng _app để tránh nhầm lẫn với biến app toàn cục
@@ -124,24 +136,6 @@ def create_default_data(_app): # Sử dụng _app để tránh nhầm lẫn vớ
 
         db.session.commit()
         print("Default data creation complete.")
-
-
-# CÁC DECORATOR @app.route PHẢI ĐƯỢC ĐẶT SAU KHI 'app' ĐƯỢC KHỞI TẠO BẰNG create_app()
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    static_folder_path = app.static_folder
-    if static_folder_path is None:
-        return "Static folder not configured", 404
-
-    if path != "" and os.path.exists(os.path.join(static_folder_path, path)):
-        return send_from_directory(static_folder_path, path)
-    else:
-        index_path = os.path.join(static_folder_path, 'index.html')
-        if os.path.exists(index_path):
-            return send_from_directory(static_folder_path, 'index.html')
-        else:
-            return "index.html not found", 404
 
 
 if __name__ == '__main__':
